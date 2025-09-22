@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
+from clientcode import variable
 
 # -------------------------
 # CONFIG
@@ -20,7 +21,12 @@ def get_token():
     url = f"{BASE_URL}/user/login"
     payload = {"username": USERNAME, "password": PASSWORD}
     res = requests.post(url, json=payload).json()
-    return res["data"]["token"]
+    print("Login response:", res)  # 👈 add this line
+    # return res["data"]["token"]
+    if "data" in res and "token" in res["data"]:
+        return res["data"]["token"]
+    else:
+        raise Exception(f"Login failed: {res}")
 
 # -------------------------
 # 2. GET DEVICE DATA

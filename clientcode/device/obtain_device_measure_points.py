@@ -6,7 +6,7 @@ if __name__ == '__main__':
     url = variable.baseurl + '/device/measurePoints'
     headers = variable.headers
     data = {
-     "deviceSn": "000000"
+     "deviceSn": "2505240025"
     }
 
     response = requests.post(url, headers=headers, json=data)

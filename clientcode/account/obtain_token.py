@@ -22,7 +22,7 @@ if __name__ == '__main__':
     data = {
             "appSecret": "fa11d3c6dc305658c6c44b20c676302c",      # Replace with your appSecret
             "email": "engrdivina@writeshopsolar.com",      # Replace with your email
-            "companyId": "0",                  # Replace with your companyId
+            "companyId": "10378839",                  # Replace with your companyId
             "password": passwordWith256
     }
     try:

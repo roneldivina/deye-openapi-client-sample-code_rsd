@@ -14,7 +14,7 @@ if __name__ == '__main__':
     Value for field of ‘measurePoints‘ could be got through endpint ‘/v1.0/device/measurePoints’
     """
     data = {
-        "deviceSn": "333333",
+        "deviceSn": "2505240025",
         "granularity": 1,
         "startAt": "2024-05-20",
         "endAt": "2024-05",

@@ -10,7 +10,7 @@ if __name__ == '__main__':
     """
     data = {
         "deviceList": [
-            "333333"    # Replace with your deviceSn
+            "2505240025"    # Replace with your deviceSn
         ]
     }
 

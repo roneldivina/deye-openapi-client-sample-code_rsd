@@ -1,0 +1,1 @@
+curl --location 'https://eu1-developer.deyecloud.com/v1.0/account/token?appId=202509192392002' --header 'Content-Type: application/json' --data-raw '{"appSecret": "fa11d3c6dc305658c6c44b20c676302c", "email": "engrdivina@writeshopsolar.com","password": "pece01@01"}'
