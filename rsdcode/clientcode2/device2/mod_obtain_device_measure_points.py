@@ -1,6 +1,5 @@
 import requests
 from clientcode import variable
-from pprint import pprint
 
 # Fetch measure points according to deviceSn
 if __name__ == '__main__':
@@ -14,5 +13,3 @@ if __name__ == '__main__':
 
     print(response.status_code)
     print(response.json())
-
-    pprint(response.json())

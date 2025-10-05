@@ -1,5 +1,6 @@
 import requests
 from clientcode import variable
+from pprint import pprint
 
 if __name__ == '__main__':
     url = variable.baseurl + '/device/history'
@@ -15,13 +16,15 @@ if __name__ == '__main__':
     """
     data = {
         "deviceSn": "2505240025",
-        "granularity": 1,
-        "startAt": "2024-05-20",
-        "endAt": "2024-05",
-        "measurePoints": ["SOC"]
+        "granularity": 3,
+        "startAt": "2025-09",
+        "endAt": "2025-10",
+        # "measurePoints": ["DailyActiveProduction"]
     }
 
     response = requests.post(url, headers=headers, json=data)
 
     print(response.status_code)
-    print(response.json())
+    # print(response.json())
+
+    pprint(response.json())
