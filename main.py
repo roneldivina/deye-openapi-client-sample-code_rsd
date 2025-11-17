@@ -25,8 +25,8 @@ def get_station_alerts():
 
     data = {
         "stationId": 61553118,
-        "startTimestamp": to_ts("2025-10-18"),
-        "endTimestamp": to_ts("2025-10-19"),
+        "startTimestamp": to_ts("2025-10-18"), #TODO: adjust date as needed
+        "endTimestamp": to_ts("2025-12-30"), #TODO: adjust date as needed
         "page": 1,
         "size": 1
     }
@@ -141,8 +141,8 @@ def create_brevo_campaign():
     data_alerts = {
         "stationId": 61553118,
         # wide range to ensure we get recent items; adjust as needed
-        "startTimestamp": to_ts("2025-10-18"),
-        "endTimestamp": to_ts("2025-12-30"),
+        "startTimestamp": to_ts("2025-10-18"), #TODO: adjust date as needed
+        "endTimestamp": to_ts("2025-12-30"), #TODO: adjust date as needed
         "page": 1,
         "size": 3
     }
@@ -176,27 +176,34 @@ def create_brevo_campaign():
 
     # Interpret latest alert fields
     alert_name = None
-    alert_status_text = None
-    alert_status_dot_color = None  # hex color for dot
+    alert_status_word = None  # "Resolved" or "On-going"
+    summary_status_text = None  # "Status is operational" or "Status: Issue detected"
+    summary_status_dot_color = None
     alert_start_hr_local = None
 
     if latest_alert:
         alert_name = latest_alert.get('alertName') or latest_alert.get('alertCode') or 'Unknown'
         status_val = latest_alert.get('status')
-        # status mapping: 0 -> Resolved, else -> On-going
         try:
             status_int = int(status_val)
         except Exception:
             status_int = None
 
-        if status_int == 0:
-            alert_status_text = "Resolved"
-            alert_status_dot_color = "#2ecc71"  # green
+        # Determine words and summary status
+        if status_int is None:
+            alert_status_word = "Unknown"
+            summary_status_text = "Status: Unknown"
+            summary_status_dot_color = "#7f8c8d"  # gray
+        elif status_int == 0:
+            alert_status_word = "Resolved"
+            summary_status_text = "Status is operational"
+            summary_status_dot_color = "#2ecc71"  # green
         else:
-            alert_status_text = "On-going"
-            alert_status_dot_color = "#e74c3c"  # red
+            alert_status_word = "On-going"
+            summary_status_text = "Status: Issue detected"
+            summary_status_dot_color = "#e74c3c"  # red
 
-        # optional formatted local time if available (API might already include)
+        # time: prefer API-provided human-readable local time if available
         alert_start_hr_local = latest_alert.get('alertStartTime_hr_local')
         if not alert_start_hr_local and latest_alert.get('alertStartTime') is not None:
             try:
@@ -204,21 +211,25 @@ def create_brevo_campaign():
                 alert_start_hr_local = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
             except Exception:
                 alert_start_hr_local = None
+    else:
+        # no alerts -> assume everything operational
+        summary_status_text = "Status is operational"
+        summary_status_dot_color = "#2ecc71"
+        alert_status_word = None
+        alert_start_hr_local = None
 
     # ------------------------
     # C) Build Email HTML (Greeting + Overall Production/Savings + Latest Error box)
     # ------------------------
     today = date.today()
-    # ensure theme color #fa2d39 used as header (user preference)
     header_color = "#fa2d39"
 
-    # status dot HTML (if no alert, show N/A)
-    if alert_name:
-        status_dot_html = f"""<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:{alert_status_dot_color}; margin-right:8px; vertical-align:middle;"></span>"""
-        alert_time_line = f"<div class='label small'>Time: {alert_start_hr_local}</div>" if alert_start_hr_local else ""
-    else:
-        status_dot_html = ""
-        alert_time_line = ""
+    # status dot HTML
+    status_dot_html = f"""<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:{summary_status_dot_color}; margin-right:8px; vertical-align:middle;"></span>"""
+
+    # Latest Error time line and final status line below time
+    alert_time_line = f"<div class='small'>Time: {alert_start_hr_local}</div>" if alert_start_hr_local else ""
+    final_alert_status_line = f"<div style='margin-top:8px; font-weight:600;'>{alert_status_word}</div>" if alert_status_word else ""
 
     html_content = f"""
         <html>
@@ -228,14 +239,15 @@ def create_brevo_campaign():
                 body {{ font-family: Arial, sans-serif; color: #333; margin:0; padding:0; }}
                 .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
                 .header {{ background-color: {header_color}; color: white; padding: 18px; text-align: center; border-radius: 6px; }}
-                .greeting {{ margin-top: 18px; font-size: 16px; }}
-                .box {{ background-color: #f7f7f7; padding: 18px; margin: 18px 0; border-radius: 6px; text-align: center; }}
+                .greeting {{ margin-top: 18px; font-size: 15px; }}
+                .summary-status {{ margin: 10px 0 18px 0; font-size: 15px; color: #333; }}
+                .box {{ background-color: #f7f7f7; padding: 18px; margin: 6px 0 18px 0; border-radius: 6px; text-align: center; }}
                 .label {{ color: #555; font-size: 14px; }}
-                .amount {{ font-size: 24px; font-weight: bold; margin-top: 8px; }}
+                .amount {{ font-size: 20px; font-weight: bold; margin-top: 8px; }}
                 .error-box {{ background: #fff; border: 1px solid #e6e6e6; border-radius: 6px; padding: 16px; margin: 18px 0; }}
-                .error-title {{ font-size: 16px; margin-bottom: 8px; }}
+                .error-title {{ font-size: 14px; margin-bottom: 8px; color:#777; }}
                 .error-name {{ font-weight: 600; color: #333; margin-bottom: 6px; }}
-                .error-status {{ font-size: 15px; color: #333; vertical-align: middle; }}
+                .error-status-line {{ font-size: 15px; color: #333; margin-top: 6px; }}
                 .small {{ font-size: 13px; color:#777; }}
                 hr.sep {{ border: none; border-top: 1px solid #eee; margin: 18px 0; }}
             </style>
@@ -247,7 +259,11 @@ def create_brevo_campaign():
                 </div>
 
                 <div class="greeting">
-                    <p style="margin:0 0 12px 0; font-size:15px;">Hello,</p>
+                    <p style="margin:0 0 8px 0;">Hello — here is your latest update about your Solar PV System:</p>
+                </div>
+
+                <div class="summary-status">
+                    {status_dot_html}<span style="vertical-align:middle;">{summary_status_text}</span>
                 </div>
 
                 <div class="box" role="region" aria-label="Savings">
@@ -264,15 +280,12 @@ def create_brevo_campaign():
                     <div class="error-title small">Latest Error</div>
                     <div class="error-name">{alert_name if alert_name else 'No recent alerts'}</div>
                     {alert_time_line}
-                    <div style="height:8px;"></div>
-                    <div class="error-status">
-                        {status_dot_html}
-                        <span style="vertical-align:middle;">{alert_status_text if alert_status_text else 'N/A'}</span>
-                    </div>
+                    {final_alert_status_line}
                 </div>
 
-                <p style="text-align:center; color:#777; font-size:12px;">Report generated on {today.strftime('%Y-%m-%d')}</p>
-                <p style="text-align:center;"><strong>Writeshop Solar Team</strong></p>
+                <p style="text-align:left; color:#777; font-size:13px;">Report generated on {today.strftime('%Y-%m-%d')}</p>
+
+                <p style="text-align:left; margin-top:20px;">Best Regards,<br><strong>Writeshop Solar Team</strong></p>
             </div>
         </body>
         </html>
@@ -289,8 +302,9 @@ def create_brevo_campaign():
             "email": "hello@marketing.writeshopsolar.com"
         },
         html_content=html_content,
-        recipients={"listIds": [2, 7]},
-        scheduled_at="2025-11-17 13:51:01"  # keep existing scheduled time (modify as needed)
+        recipients={"listIds": [7]},
+        # scheduled_at=None #TODO: adjust date/value as needed
+        scheduled_at="2025-11-17 22:13:01Z"  # keep existing scheduled time (modify as needed)
     )
 
     print("\n=== Brevo Campaign ===")

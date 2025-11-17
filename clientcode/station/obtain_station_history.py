@@ -1,8 +1,10 @@
 import requests
 from clientcode import variable
+from pprint import pprint
 
 if __name__ == '__main__':
-    url = variable.baseurl + '/station/list'
+    # url = variable.baseurl + '/station/list'
+    url = variable.baseurl + '/station/history'
     headers = variable.headers
 
     """
@@ -14,13 +16,15 @@ if __name__ == '__main__':
     If granularity is 4(year), the field ‘startAt’ and 'endAt’should be in format 'yyyy’. Return the yearly data between ‘startAt’ to ‘endAt’.
     """
     data = {
-        "stationId": 000000,        # Replace with your stationId in deyecloud
-        "granularity": 1,           # The granularity of the telemetry data frame
-        "startAt": "2024-05-27",    # Start date
-        "endAt": "2024-08-01"       # End date
+        "stationId": 61553118,        # Replace with your stationId in deyecloud
+        "granularity": 2,           # The granularity of the telemetry data frame
+        "startAt": "2025-09-08",    # Start date
+        "endAt": "2025-10-08"       # End date
     }
 
     response = requests.post(url, headers=headers, json=data)
 
-    print(response.status_code)
-    print(response.json())
+    # print(response.status_code)
+    pprint(response.status_code)
+    # print(response.json())
+    pprint(response.json())

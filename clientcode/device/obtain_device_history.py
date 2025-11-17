@@ -18,7 +18,7 @@ if __name__ == '__main__':
         "deviceSn": "2505240025",
         "granularity": 3,
         "startAt": "2025-09",
-        "endAt": "2025-10",
+        "endAt": "2025-11",
         # "measurePoints": ["DailyActiveProduction"]
     }
 
