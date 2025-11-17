@@ -10,11 +10,11 @@ import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
 
 # ========================
-# 1. Station Alert List
+# 1. Station Alert List (debug function kept)
 # ========================
 
 def get_station_alerts():
-    """Fetch and display station alerts with human-readable timestamps"""
+    """Fetch and display station alerts with human-readable timestamps (unchanged)"""
     url = variable.baseurl + '/station/alertList'
     headers = dict(variable.headers) if hasattr(variable, 'headers') else {}
     headers.setdefault('Content-Type', 'application/json')
@@ -31,7 +31,7 @@ def get_station_alerts():
         "size": 1
     }
 
-    print("\n=== Station Alerts ===")
+    print("\n=== Station Alerts (Debug) ===")
     print("Request payload:")
     pprint(data)
 
@@ -66,12 +66,11 @@ def get_station_alerts():
 
 
 # ========================
-# 2. Brevo Email Campaign
+# 2. Brevo Email Campaign (with production + latest alert)
 # ========================
 
 def create_brevo_campaign():
-    """Create and send email campaign via Brevo with overall production & savings only"""
-    # NOTE: Keep your API_KEY here (it was in your original script)
+    """Create and send email campaign via Brevo with overall production, savings, greeting, and latest error box"""
     API_KEY = "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"
 
     configuration = sib_api_v3_sdk.Configuration()
@@ -81,35 +80,32 @@ def create_brevo_campaign():
         sib_api_v3_sdk.ApiClient(configuration)
     )
 
-    # ========================
-    # Fetch Overall Production from device/history
-    # ========================
-    device_sn = "2505240025"  # from the snippet you provided
+    RATE_PER_KWH = 11.15  # PHP per kWh
+
+    # ------------------------
+    # A) Fetch Overall Production from device/history
+    # ------------------------
+    device_sn = "2505240025"
     url_device_history = variable.baseurl + '/device/history'
     headers = dict(variable.headers) if hasattr(variable, 'headers') else {}
     headers.setdefault('Content-Type', 'application/json')
 
-    data = {
+    data_history = {
         "deviceSn": device_sn,
-        # the snippet used granularity 4 and year-range; keep the same
         "granularity": 4,
         "startAt": "2025",
         "endAt": "2025",
     }
 
     print("\n=== Fetching device history for Production ===")
-    print("Request payload:")
-    pprint(data)
+    pprint(data_history)
 
     production_value = 0.0
-    RATE_PER_KWH = 11.15  # PHP per kWh
-
     try:
-        resp = requests.post(url_device_history, headers=headers, json=data)
+        resp = requests.post(url_device_history, headers=headers, json=data_history, timeout=20)
         print(f"device/history status: {resp.status_code}")
         if resp.status_code == 200:
             result = resp.json()
-            # attempt to extract the production item value
             try:
                 item_list = result['dataList'][0]['itemList']
                 production_item = next((item for item in item_list if item.get('name') == 'Production'), None)
@@ -127,56 +123,164 @@ def create_brevo_campaign():
     except Exception as e:
         print("Request to device/history failed:", e)
 
-    # ========================
-    # Calculate Savings (only overall)
-    # ========================
     overall_production = production_value
     overall_savings = overall_production * RATE_PER_KWH
 
-    print(f"Overall Production: {overall_production:,.2f} kWh")
-    print(f"Overall Savings: PHP {overall_savings:,.2f}")
+    # ------------------------
+    # B) Fetch latest 3 alerts from station/alertList, choose most recent one
+    # ------------------------
+    url_alerts = variable.baseurl + '/station/alertList'
+    headers_alerts = dict(variable.headers) if hasattr(variable, 'headers') else {}
+    headers_alerts.setdefault('Content-Type', 'application/json')
 
-    # ========================
-    # Create Campaign with only Overall Production & Savings
-    # ========================
+    def to_ts(date_str, fmt='%Y-%m-%d'):
+        dt = datetime.strptime(date_str, fmt)
+        return int(dt.replace(tzinfo=timezone.utc).timestamp())
+
+    # fetch 3 latest alerts
+    data_alerts = {
+        "stationId": 61553118,
+        # wide range to ensure we get recent items; adjust as needed
+        "startTimestamp": to_ts("2025-10-18"),
+        "endTimestamp": to_ts("2025-12-30"),
+        "page": 1,
+        "size": 3
+    }
+
+    print("\n=== Fetching latest 3 station alerts ===")
+    pprint(data_alerts)
+
+    latest_alert = None
+    try:
+        resp_alerts = requests.post(url_alerts, headers=headers_alerts, json=data_alerts, timeout=20)
+        print("station/alertList status:", resp_alerts.status_code)
+        if resp_alerts.status_code == 200:
+            alerts_json = resp_alerts.json()
+            items = alerts_json.get('stationAlertItems') or []
+            # Sort by alertStartTime descending to ensure most recent first
+            try:
+                items_sorted = sorted(items, key=lambda x: int(x.get('alertStartTime') or 0), reverse=True)
+            except Exception:
+                items_sorted = items
+            if items_sorted:
+                latest_alert = items_sorted[0]
+                print("Latest alert extracted:")
+                pprint(latest_alert)
+            else:
+                print("No alerts returned.")
+                latest_alert = None
+        else:
+            print("Error fetching alerts:", resp_alerts.status_code, resp_alerts.text)
+    except Exception as e:
+        print("Request to station/alertList failed:", e)
+
+    # Interpret latest alert fields
+    alert_name = None
+    alert_status_text = None
+    alert_status_dot_color = None  # hex color for dot
+    alert_start_hr_local = None
+
+    if latest_alert:
+        alert_name = latest_alert.get('alertName') or latest_alert.get('alertCode') or 'Unknown'
+        status_val = latest_alert.get('status')
+        # status mapping: 0 -> Resolved, else -> On-going
+        try:
+            status_int = int(status_val)
+        except Exception:
+            status_int = None
+
+        if status_int == 0:
+            alert_status_text = "Resolved"
+            alert_status_dot_color = "#2ecc71"  # green
+        else:
+            alert_status_text = "On-going"
+            alert_status_dot_color = "#e74c3c"  # red
+
+        # optional formatted local time if available (API might already include)
+        alert_start_hr_local = latest_alert.get('alertStartTime_hr_local')
+        if not alert_start_hr_local and latest_alert.get('alertStartTime') is not None:
+            try:
+                ts = int(latest_alert.get('alertStartTime'))
+                alert_start_hr_local = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                alert_start_hr_local = None
+
+    # ------------------------
+    # C) Build Email HTML (Greeting + Overall Production/Savings + Latest Error box)
+    # ------------------------
     today = date.today()
+    # ensure theme color #fa2d39 used as header (user preference)
+    header_color = "#fa2d39"
+
+    # status dot HTML (if no alert, show N/A)
+    if alert_name:
+        status_dot_html = f"""<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:{alert_status_dot_color}; margin-right:8px; vertical-align:middle;"></span>"""
+        alert_time_line = f"<div class='label small'>Time: {alert_start_hr_local}</div>" if alert_start_hr_local else ""
+    else:
+        status_dot_html = ""
+        alert_time_line = ""
+
     html_content = f"""
         <html>
         <head>
             <meta charset="utf-8" />
             <style>
-                body {{ font-family: Arial, sans-serif; color: #333; }}
+                body {{ font-family: Arial, sans-serif; color: #333; margin:0; padding:0; }}
                 .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background-color: #fa2d39; color: white; padding: 20px; text-align: center; border-radius: 5px; }}
-                .box {{ background-color: #f7f7f7; padding: 20px; margin: 20px 0; border-radius: 5px; text-align: center; }}
-                .amount {{ font-size: 28px; font-weight: bold; margin-top: 10px; }}
+                .header {{ background-color: {header_color}; color: white; padding: 18px; text-align: center; border-radius: 6px; }}
+                .greeting {{ margin-top: 18px; font-size: 16px; }}
+                .box {{ background-color: #f7f7f7; padding: 18px; margin: 18px 0; border-radius: 6px; text-align: center; }}
                 .label {{ color: #555; font-size: 14px; }}
+                .amount {{ font-size: 24px; font-weight: bold; margin-top: 8px; }}
+                .error-box {{ background: #fff; border: 1px solid #e6e6e6; border-radius: 6px; padding: 16px; margin: 18px 0; }}
+                .error-title {{ font-size: 16px; margin-bottom: 8px; }}
+                .error-name {{ font-weight: 600; color: #333; margin-bottom: 6px; }}
+                .error-status {{ font-size: 15px; color: #333; vertical-align: middle; }}
+                .small {{ font-size: 13px; color:#777; }}
+                hr.sep {{ border: none; border-top: 1px solid #eee; margin: 18px 0; }}
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>☀️ Overall Solar Production & Savings</h1>
+                    <h1 style="margin:0; font-size:20px;">☀️ Overall Solar Production & Savings</h1>
                 </div>
 
-                <div class="box">
+                <div class="greeting">
+                    <p style="margin:0 0 12px 0; font-size:15px;">Hello,</p>
+                </div>
+
+                <div class="box" role="region" aria-label="Savings">
                     <div class="label">Overall Production (kWh)</div>
                     <div class="amount">{overall_production:,.2f} kWh</div>
 
-                    <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+                    <hr class="sep">
 
                     <div class="label">Overall Savings (PHP)</div>
                     <div class="amount">PHP {overall_savings:,.2f}</div>
                 </div>
 
-                <p style="text-align:center; color:#777; font-size:13px;">Report generated on {today.strftime('%Y-%m-%d')}</p>
+                <div class="error-box" role="region" aria-label="Latest Error">
+                    <div class="error-title small">Latest Error</div>
+                    <div class="error-name">{alert_name if alert_name else 'No recent alerts'}</div>
+                    {alert_time_line}
+                    <div style="height:8px;"></div>
+                    <div class="error-status">
+                        {status_dot_html}
+                        <span style="vertical-align:middle;">{alert_status_text if alert_status_text else 'N/A'}</span>
+                    </div>
+                </div>
+
+                <p style="text-align:center; color:#777; font-size:12px;">Report generated on {today.strftime('%Y-%m-%d')}</p>
                 <p style="text-align:center;"><strong>Writeshop Solar Team</strong></p>
             </div>
         </body>
         </html>
     """
 
-    # Prepare campaign object: only change content and subject to show overall savings
+    # ------------------------
+    # D) Create and schedule the campaign
+    # ------------------------
     email_campaign = sib_api_v3_sdk.CreateEmailCampaign(
         name="Overall Solar Savings Report - " + today.strftime('%B %Y'),
         subject=f"Your Overall Solar Savings: PHP {overall_savings:,.2f}",
@@ -186,7 +290,7 @@ def create_brevo_campaign():
         },
         html_content=html_content,
         recipients={"listIds": [2, 7]},
-        scheduled_at="2025-11-17 14:21:01"  # keep existing scheduled time (modify as needed)
+        scheduled_at="2025-11-17 13:51:01"  # keep existing scheduled time (modify as needed)
     )
 
     print("\n=== Brevo Campaign ===")
@@ -205,7 +309,7 @@ def create_brevo_campaign():
 if __name__ == '__main__':
     print("Starting combined operations...\n")
 
-    # Run station alerts
+    # Run station alerts (debug)
     get_station_alerts()
 
     # Run Brevo campaign
