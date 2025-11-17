@@ -64,12 +64,14 @@ def get_station_alerts():
     except ValueError:
         print(response.text)
 
+
 # ========================
 # 2. Brevo Email Campaign
 # ========================
 
 def create_brevo_campaign():
-    """Create and send email campaign via Brevo with energy savings calculation"""
+    """Create and send email campaign via Brevo with overall production & savings only"""
+    # NOTE: Keep your API_KEY here (it was in your original script)
     API_KEY = "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"
 
     configuration = sib_api_v3_sdk.Configuration()
@@ -80,121 +82,111 @@ def create_brevo_campaign():
     )
 
     # ========================
-    # Fetch Energy Data
+    # Fetch Overall Production from device/history
     # ========================
-    url_energy = variable.baseurl + '/station/energyStatistic'
+    device_sn = "2505240025"  # from the snippet you provided
+    url_device_history = variable.baseurl + '/device/history'
     headers = dict(variable.headers) if hasattr(variable, 'headers') else {}
     headers.setdefault('Content-Type', 'application/json')
 
-    def to_ts(date_str, fmt='%Y-%m-%d'):
-        dt = datetime.strptime(date_str, fmt)
-        return int(dt.replace(tzinfo=timezone.utc).timestamp())
-
-    # Get current month data
-    today = date.today()
-    first_day = today.replace(day=1)
-    
-    energy_data = {
-        "stationId": 61553118,
-        "startTimestamp": to_ts(first_day.strftime('%Y-%m-%d')),
-        "endTimestamp": to_ts(today.strftime('%Y-%m-%d')),
+    data = {
+        "deviceSn": device_sn,
+        # the snippet used granularity 4 and year-range; keep the same
+        "granularity": 4,
+        "startAt": "2025",
+        "endAt": "2025",
     }
 
-    print("\n=== Fetching Energy Data ===")
-    resp_energy = requests.post(url_energy, headers=headers, json=energy_data)
-    
-    current_month_production = 0
-    overall_production = 0
-    
-    if resp_energy.status_code == 200:
-        try:
-            energy_json = resp_energy.json()
-            # Adjust keys based on actual API response
-            current_month_production = energy_json.get('power', {}).get('currentMonth', 0) or 0
-            overall_production = energy_json.get('power', {}).get('cumulative', 0) or 0
-            print(f"Current Month Production: {current_month_production} kWh")
-            print(f"Overall Production: {overall_production} kWh")
-        except Exception as e:
-            print(f"Error parsing energy data: {e}")
-    else:
-        print(f"Error fetching energy data: {resp_energy.status_code}")
+    print("\n=== Fetching device history for Production ===")
+    print("Request payload:")
+    pprint(data)
+
+    production_value = 0.0
+    RATE_PER_KWH = 11.15  # PHP per kWh
+
+    try:
+        resp = requests.post(url_device_history, headers=headers, json=data)
+        print(f"device/history status: {resp.status_code}")
+        if resp.status_code == 200:
+            result = resp.json()
+            # attempt to extract the production item value
+            try:
+                item_list = result['dataList'][0]['itemList']
+                production_item = next((item for item in item_list if item.get('name') == 'Production'), None)
+                if production_item is not None:
+                    production_value = float(production_item.get('value') or 0)
+                    print(f"Extracted Production: {production_value} kWh")
+                else:
+                    print("Production item not found in device history response.")
+                    pprint(result)
+            except Exception as e:
+                print("Error extracting Production from device history response:", e)
+                pprint(result)
+        else:
+            print("Error fetching device history:", resp.status_code, resp.text)
+    except Exception as e:
+        print("Request to device/history failed:", e)
 
     # ========================
-    # Calculate Savings
+    # Calculate Savings (only overall)
     # ========================
-    RATE_PER_KWH = 11.15  # PHP per kWh
-    current_month_savings = current_month_production * RATE_PER_KWH
+    overall_production = production_value
     overall_savings = overall_production * RATE_PER_KWH
 
-    print(f"Current Month Savings: PHP {current_month_savings:,.2f}")
+    print(f"Overall Production: {overall_production:,.2f} kWh")
     print(f"Overall Savings: PHP {overall_savings:,.2f}")
 
     # ========================
-    # Create Campaign with Savings
+    # Create Campaign with only Overall Production & Savings
     # ========================
+    today = date.today()
     html_content = f"""
         <html>
         <head>
+            <meta charset="utf-8" />
             <style>
                 body {{ font-family: Arial, sans-serif; color: #333; }}
                 .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background-color: #2ecc71; color: white; padding: 20px; text-align: center; border-radius: 5px; }}
-                .savings-box {{ background-color: #ecf0f1; padding: 20px; margin: 20px 0; border-radius: 5px; }}
-                .savings-item {{ margin: 15px 0; font-size: 16px; }}
-                .amount {{ font-size: 24px; font-weight: bold; color: #2ecc71; }}
-                .label {{ color: #7f8c8d; font-size: 14px; }}
+                .header {{ background-color: #fa2d39; color: white; padding: 20px; text-align: center; border-radius: 5px; }}
+                .box {{ background-color: #f7f7f7; padding: 20px; margin: 20px 0; border-radius: 5px; text-align: center; }}
+                .amount {{ font-size: 28px; font-weight: bold; margin-top: 10px; }}
+                .label {{ color: #555; font-size: 14px; }}
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>☀️ Your Solar Energy Savings Report</h1>
+                    <h1>☀️ Overall Solar Production & Savings</h1>
                 </div>
-                
-                <p>Hello,</p>
-                <p>Great news! Your solar installation is generating amazing savings. Here's your latest energy report:</p>
-                
-                <div class="savings-box">
-                    <div class="savings-item">
-                        <div class="label">Current Month Production</div>
-                        <div>{current_month_production:,.2f} kWh</div>
-                    </div>
-                    
-                    <div class="savings-item">
-                        <div class="label">Current Month Savings (kWh × PHP 11.15)</div>
-                        <div class="amount">PHP {current_month_savings:,.2f}</div>
-                    </div>
-                    
-                    <hr style="border: none; border-top: 1px solid #bdc3c7; margin: 20px 0;">
-                    
-                    <div class="savings-item">
-                        <div class="label">Overall Production (Since Installation)</div>
-                        <div>{overall_production:,.2f} kWh</div>
-                    </div>
-                    
-                    <div class="savings-item">
-                        <div class="label">Overall Savings (Since Installation)</div>
-                        <div class="amount">PHP {overall_savings:,.2f}</div>
-                    </div>
+
+                <div class="box">
+                    <div class="label">Overall Production (kWh)</div>
+                    <div class="amount">{overall_production:,.2f} kWh</div>
+
+                    <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+
+                    <div class="label">Overall Savings (PHP)</div>
+                    <div class="amount">PHP {overall_savings:,.2f}</div>
                 </div>
-                
-                <p>Keep harnessing the power of the sun! 🌞</p>
-                <p>Best regards,<br><strong>Writeshop Solar Team</strong></p>
+
+                <p style="text-align:center; color:#777; font-size:13px;">Report generated on {today.strftime('%Y-%m-%d')}</p>
+                <p style="text-align:center;"><strong>Writeshop Solar Team</strong></p>
             </div>
         </body>
         </html>
     """
 
+    # Prepare campaign object: only change content and subject to show overall savings
     email_campaign = sib_api_v3_sdk.CreateEmailCampaign(
-        name="Solar Savings Report - " + today.strftime('%B %Y'),
-        subject=f"Your Solar Savings This Month: PHP {current_month_savings:,.2f}",
+        name="Overall Solar Savings Report - " + today.strftime('%B %Y'),
+        subject=f"Your Overall Solar Savings: PHP {overall_savings:,.2f}",
         sender={
             "name": "Writeshop Solar",
             "email": "hello@marketing.writeshopsolar.com"
         },
         html_content=html_content,
         recipients={"listIds": [2, 7]},
-        scheduled_at="2025-11-17 13:29:01"
+        scheduled_at="2025-11-17 14:21:01"  # keep existing scheduled time (modify as needed)
     )
 
     print("\n=== Brevo Campaign ===")
@@ -205,17 +197,18 @@ def create_brevo_campaign():
     except ApiException as e:
         print("Error calling EmailCampaignsApi->create_email_campaign: %s\n" % e)
 
+
 # ========================
 # Main Entry Point
 # ========================
 
 if __name__ == '__main__':
     print("Starting combined operations...\n")
-    
+
     # Run station alerts
     get_station_alerts()
-    
+
     # Run Brevo campaign
     create_brevo_campaign()
-    
+
     print("\n=== All operations completed ===")
